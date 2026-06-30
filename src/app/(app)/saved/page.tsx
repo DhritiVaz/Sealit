@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { DifficultyBadge } from "@/components/DifficultyBadge";
-import { ProgressBar } from "@/components/ProgressBar";
 import { fetchSavedProblems } from "@/lib/user-client";
 import type { Problem } from "@/lib/types";
 
@@ -82,9 +81,6 @@ export default function SavedPage() {
                 <p className="mb-4 line-clamp-3 text-sm font-semibold leading-snug tracking-tight text-foreground">
                   {problem.headline}
                 </p>
-                {problem.builders_count > 0 && (
-                  <ProgressBar pct={problem.builders_started_pct} />
-                )}
                 <div className="mt-2 text-[10px] text-[#BBBBBA]">
                   Saved {formatSavedDate(savedAt)}
                 </div>

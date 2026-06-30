@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { DifficultyBadge } from "@/components/DifficultyBadge";
 import { OpportunityScore } from "@/components/OpportunityScore";
 import { ProblemDetailSidebar } from "@/components/ProblemDetailSidebar";
-import { ProgressBar, fmt } from "@/components/ProgressBar";
+import { fmt } from "@/components/ProgressBar";
 import { SourceTag } from "@/components/SourceTag";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import {
@@ -26,20 +26,13 @@ function EngagementRow({ problem }: { problem: Problem }) {
   if (problem.builders_count === 0) return null;
 
   return (
-    <div className="mb-10 rounded-xl border border-[#EBEBEB] bg-white px-5 py-4">
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-[13px] text-[#888884]">
-          {fmt(problem.builders_count)} builders engaged
-        </span>
-        <div className="flex items-center gap-4 min-w-[180px]">
-          <div className="flex-1">
-            <ProgressBar pct={problem.builders_started_pct} height={4} />
-          </div>
-          <span className="shrink-0 text-[12px] font-semibold text-[#555550]">
-            {problem.builders_started_pct}% started building
-          </span>
-        </div>
-      </div>
+    <div className="mb-10 flex flex-wrap items-center gap-2">
+      <span className="rounded-full border border-border bg-white px-4 py-1.5 text-[13px] font-semibold text-foreground">
+        {fmt(problem.builders_count)} builders engaged
+      </span>
+      <span className="rounded-full border border-primary/20 bg-primary/8 px-4 py-1.5 text-[13px] font-semibold text-primary">
+        {problem.builders_started_pct}% started building
+      </span>
     </div>
   );
 }

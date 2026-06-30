@@ -103,10 +103,17 @@ export default function OnboardingPage() {
     setAnalyzeError("");
     try {
       const result = await analyzeLinks(rawLinks);
-      if (result && (result.stack.length > 0 || result.domains.length > 0)) {
+      const hasUsefulData = result && (
+        result.stack.length > 0 ||
+        result.domains.length > 0 ||
+        result.github_username ||
+        result.display_name ||
+        result.avatar_url
+      );
+      if (hasUsefulData && result) {
         if (result.github_username) setGithubUsername(result.github_username);
-        const finalStack = result.stack.length > 0 ? result.stack : [];
-        const finalDomains = result.domains.length > 0 ? result.domains : [];
+        const finalStack = result.stack;
+        const finalDomains = result.domains;
         setDetected({ stack: finalStack, domains: finalDomains });
 
         // Auto-save and go to feed — no manual chip steps needed

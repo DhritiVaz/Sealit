@@ -23,14 +23,19 @@ function isCapacityError(err: unknown): boolean {
   return msg.includes("high demand") || msg.includes("503") || msg.includes("overloaded") || msg.includes("UNAVAILABLE");
 }
 
-async function generateWithFallback(prompt: string): Promise<string | null> {
+async function generateWithFallback(prompt: string, retries = 1): Promise<string | null> {
   const apiKey = getApiKey();
   if (!apiKey) return null;
 
   const primary = preferredModel();
   try {
     const result = await makeModel(apiKey, primary).generateContent(prompt);
-    return result.response.text();
+    const text = result.response.text();
+    // Retry once if the model returns an empty response (cold start)
+    if (!text?.trim() && retries > 0) {
+      return generateWithFallback(prompt, retries - 1);
+    }
+    return text;
   } catch (err) {
     if (isCapacityError(err)) {
       console.warn(`${primary} capacity exceeded, falling back to ${FALLBACK_MODEL}`);

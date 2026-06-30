@@ -1,28 +1,26 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/types";
-import { getDomainGradient } from "@/lib/domain-images";
+import { getDomainImage, getDomainGradient } from "@/lib/domain-images";
 import { DifficultyBadge } from "./DifficultyBadge";
 import { OpportunityScore } from "./OpportunityScore";
-import { ProgressBar } from "./ProgressBar";
 import { SourceTag } from "./SourceTag";
 
-function CoverImage({
-  problem,
-  className = "",
-}: {
-  problem: Problem;
-  className?: string;
-}) {
-  if (problem.cover_image) {
+function CoverImage({ problem, className = "" }: { problem: Problem; className?: string }) {
+  const [imgErr, setImgErr] = useState(false);
+  const src = problem.cover_image || (!imgErr ? getDomainImage(problem.domain, problem.id) : null);
+
+  if (src && !imgErr) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={problem.cover_image}
+        src={src}
         alt=""
         className={`object-cover ${className}`}
         loading="lazy"
+        onError={() => setImgErr(true)}
       />
     );
   }
@@ -36,6 +34,31 @@ function CoverImage({
         {problem.domain}
       </span>
     </div>
+  );
+}
+
+function SaveButton({ saved, onClick }: { saved?: boolean; onClick?: (e: React.MouseEvent) => void }) {
+  if (!onClick) return null;
+  return (
+    <button
+      onClick={onClick}
+      className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full shadow-md transition-all ${
+        saved
+          ? "bg-primary"
+          : "bg-white hover:bg-gray-50"
+      }`}
+    >
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill={saved ? "white" : "none"}
+        stroke={saved ? "white" : "#555550"}
+        strokeWidth="2.2"
+      >
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+      </svg>
+    </button>
   );
 }
 
@@ -85,8 +108,21 @@ export function ProblemCard({
           </button>
           <div className="flex items-center justify-end gap-2">
             {onSave && (
-              <button onClick={onSave} className="text-sm font-semibold text-primary">
-                {saved ? "Saved ✓" : "Save"}
+              <button
+                onClick={onSave}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition-all ${
+                  saved
+                    ? "border-primary bg-primary text-white"
+                    : "border-border bg-white text-foreground hover:border-primary/40"
+                }`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24"
+                  fill={saved ? "white" : "none"}
+                  stroke={saved ? "white" : "currentColor"}
+                  strokeWidth="2.2">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
+                {saved ? "Saved" : "Save"}
               </button>
             )}
             {onBuild && (
@@ -104,23 +140,7 @@ export function ProblemCard({
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface-muted transition-shadow hover:shadow-md dark:hover:shadow-black/20">
       <div className="relative h-[120px] shrink-0 overflow-hidden bg-surface-muted">
         <CoverImage problem={problem} className="h-full w-full transition-transform duration-300 group-hover:scale-105" />
-        {onSave && (
-          <button
-            onClick={onSave}
-            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-surface/90 shadow-sm backdrop-blur-sm transition-colors hover:bg-surface"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill={saved ? "var(--primary)" : "none"}
-              stroke="var(--primary)"
-              strokeWidth="2"
-            >
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-        )}
+        <SaveButton saved={saved} onClick={onSave} />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col p-4">
@@ -148,18 +168,8 @@ export function ProblemCard({
           </p>
         </button>
 
-        <div className="mt-auto shrink-0 space-y-2.5">
-          {problem.builders_count > 0 && (
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <ProgressBar pct={problem.builders_started_pct} height={3} />
-              </div>
-              <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-muted">
-                {problem.builders_started_pct}% started building
-              </span>
-            </div>
-          )}
-          {onBuild && (
+        {onBuild && (
+          <div className="mt-auto shrink-0">
             <button
               onClick={onBuild}
               className={`w-full rounded-lg py-2.5 text-[14px] font-semibold transition-colors ${
@@ -170,8 +180,8 @@ export function ProblemCard({
             >
               {building ? "View build tracker →" : "I'm building this"}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </article>
   );
