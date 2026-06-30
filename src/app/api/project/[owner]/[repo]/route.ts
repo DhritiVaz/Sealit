@@ -5,7 +5,7 @@ import { analyzeProject } from "@/lib/project-analysis";
 import { fetchReadme } from "@/lib/github";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 type Params = { params: Promise<{ owner: string; repo: string }> };
 

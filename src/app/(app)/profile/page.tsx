@@ -108,8 +108,9 @@ function ProjectCard({ p }: { p: UserProject }) {
 
 type EditForm = {
   display_name: string; age: string; bio: string; location: string;
-  avatar_url: string; website: string; certifications: string;
-  experience: string; education: string; stack: string[]; domains: string[];
+  avatar_url: string; website: string; linkedin_url: string; github_username: string;
+  certifications: string; experience: string; education: string;
+  stack: string[]; domains: string[];
 };
 
 function toForm(p: OnboardingProfile | null, u: User | null): EditForm {
@@ -120,6 +121,8 @@ function toForm(p: OnboardingProfile | null, u: User | null): EditForm {
     location: p?.location ?? "",
     avatar_url: p?.avatar_url ?? u?.user_metadata?.avatar_url ?? "",
     website: p?.website ?? "",
+    linkedin_url: p?.linkedin_url ?? "",
+    github_username: p?.github_username ?? "",
     certifications: (p?.certifications ?? []).join("\n"),
     experience: p?.experience ?? "",
     education: p?.education ?? "",
@@ -191,16 +194,18 @@ export default function ProfilePage() {
   async function handleSave() {
     setSaving(true);
     try {
+      const newGitHubUsername = form.github_username.trim() || undefined;
       const updated: OnboardingProfile = {
         stack: form.stack, domains: form.domains,
         goal: profile?.goal ?? "side_project",
         completed: profile?.completed ?? true,
-        github_username: profile?.github_username,
+        github_username: newGitHubUsername,
         display_name: form.display_name || undefined,
         age: form.age ? parseInt(form.age, 10) : undefined,
         bio: form.bio || undefined, location: form.location || undefined,
         avatar_url: form.avatar_url || undefined, website: form.website || undefined,
-        linkedin_url: profile?.linkedin_url, portfolio_url: profile?.portfolio_url,
+        linkedin_url: form.linkedin_url.trim() || profile?.linkedin_url,
+        portfolio_url: profile?.portfolio_url,
         links: profile?.links,
         certifications: form.certifications
           ? form.certifications.split("\n").map((s) => s.trim()).filter(Boolean)
@@ -210,6 +215,30 @@ export default function ProfilePage() {
       await saveUserProfile(updated);
       setProfile(updated);
       setEditing(false);
+
+      // Auto-detect stack if github username was just added and stack is still empty
+      if (newGitHubUsername && form.stack.length === 0 && !autoDetectRan.current) {
+        autoDetectRan.current = true;
+        setDetectingStack(true);
+        try {
+          const result = await analyzeLinks([`https://github.com/${newGitHubUsername}`]);
+          if (result && (result.stack.length > 0 || result.domains.length > 0)) {
+            const withStack: OnboardingProfile = {
+              ...updated,
+              stack: result.stack,
+              domains: result.domains.length > 0 ? result.domains : updated.domains,
+              bio: updated.bio ?? result.bio ?? undefined,
+              location: updated.location ?? result.location ?? undefined,
+              avatar_url: updated.avatar_url ?? result.avatar_url ?? undefined,
+              website: updated.website ?? result.website ?? undefined,
+            };
+            await saveUserProfile(withStack);
+            setProfile(withStack);
+            setForm((f) => ({ ...f, stack: withStack.stack, domains: withStack.domains }));
+          }
+        } catch { /* silent */ }
+        setDetectingStack(false);
+      }
     } finally {
       setSaving(false);
     }
@@ -299,6 +328,19 @@ export default function ProfilePage() {
                 <div>
                   <label className={lbl}>Website</label>
                   <input type="url" value={form.website} onChange={(e) => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://..." className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>LinkedIn URL</label>
+                  <input type="url" value={form.linkedin_url} onChange={(e) => setForm(f => ({ ...f, linkedin_url: e.target.value }))} placeholder="https://linkedin.com/in/..." className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>GitHub Username</label>
+                  <div className="flex items-center gap-2">
+                    <input type="text" value={form.github_username} onChange={(e) => setForm(f => ({ ...f, github_username: e.target.value.replace(/^@/, "").trim() }))} placeholder="yourusername" className={`${inp} flex-1`} />
+                  </div>
+                  {form.github_username && form.stack.length === 0 && (
+                    <p className="mt-1 text-[11px] text-primary">Stack will be auto-detected on save</p>
+                  )}
                 </div>
                 <div className="flex gap-2.5 pt-1">
                   <button onClick={() => setEditing(false)} className="flex-1 rounded-xl border border-border py-2.5 text-[13px] font-medium text-muted hover:text-foreground transition-colors">Cancel</button>
@@ -462,11 +504,34 @@ export default function ProfilePage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-[13px] text-muted">
-                  {detectingStack ? "Reading your GitHub repos…" : (
-                    <button onClick={() => { setForm(toForm(profile, user)); setEditing(true); }} className="text-primary hover:underline">Add your stack</button>
+                <div className="flex flex-wrap items-center gap-3">
+                  {detectingStack ? (
+                    <p className="text-[13px] text-muted animate-pulse">Reading your GitHub repos…</p>
+                  ) : (
+                    <>
+                      <button onClick={() => { setForm(toForm(profile, user)); setEditing(true); }} className="text-[13px] text-primary hover:underline">Add your stack</button>
+                      {profile?.github_username && (
+                        <button
+                          onClick={async () => {
+                            setDetectingStack(true);
+                            try {
+                              const result = await analyzeLinks([`https://github.com/${profile.github_username}`]);
+                              if (result && result.stack.length > 0) {
+                                const withStack: OnboardingProfile = { ...profile, stack: result.stack, domains: result.domains.length > 0 ? result.domains : profile.domains };
+                                await saveUserProfile(withStack);
+                                setProfile(withStack);
+                              }
+                            } catch { /* silent */ }
+                            setDetectingStack(false);
+                          }}
+                          className="text-[13px] text-muted hover:text-foreground hover:underline"
+                        >
+                          Re-detect from GitHub
+                        </button>
+                      )}
+                    </>
                   )}
-                </p>
+                </div>
               )}
             </div>
 

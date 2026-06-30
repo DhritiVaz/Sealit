@@ -105,14 +105,20 @@ export default function ProjectAnalyticsPage() {
         method: "POST",
         headers: await getAuthHeaders(),
       });
-      const data = await res.json() as { analysis?: ProjectAnalysis; error?: string };
+      const text = await res.text();
+      let data: { analysis?: ProjectAnalysis; error?: string } = {};
+      try { data = JSON.parse(text); } catch {
+        // Non-JSON response — likely a Vercel timeout
+        setError("Analysis timed out — please try again");
+        return;
+      }
       if (data?.analysis) {
         setAnalysis(data.analysis);
       } else {
         setError(data?.error ?? "Analysis failed — please try again");
       }
     } catch {
-      setError("Analysis failed — please try again");
+      setError("Analysis failed — check your connection and try again");
     } finally {
       setAnalyzing(false);
     }
