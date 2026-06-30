@@ -2,27 +2,47 @@
 
 import { useEffect, useState } from "react";
 
+interface Stats {
+  totalBuilders: number;
+  problemCount: number;
+  lastUpdated: string | null;
+  configured: boolean;
+}
+
 export function LiveCounter({ className = "" }: { className?: string }) {
-  const [count, setCount] = useState(10448);
+  const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
-    fetch("/api/stats")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.totalBuilders) setCount(d.totalBuilders);
-      })
-      .catch(() => {});
+    async function load() {
+      try {
+        const res = await fetch("/api/stats");
+        const data = await res.json();
+        setStats(data);
+      } catch {
+        setStats(null);
+      }
+    }
 
-    const interval = setInterval(() => {
-      setCount((c) => c + Math.floor(Math.random() * 3));
-    }, 3000);
-
+    load();
+    const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, []);
 
+  if (!stats?.configured) {
+    return (
+      <span className={className}>
+        Connect Supabase to see live builder stats
+      </span>
+    );
+  }
+
+  const updatedLabel = stats.lastUpdated
+    ? `Last scrape ${new Date(stats.lastUpdated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+    : "Waiting for first scrape";
+
   return (
     <span className={className}>
-      {count.toLocaleString()} builders · problems scraped live · Updated every 30 min
+      {stats.totalBuilders.toLocaleString()} builders · {stats.problemCount} problems today · {updatedLabel}
     </span>
   );
 }
@@ -30,11 +50,14 @@ export function LiveCounter({ className = "" }: { className?: string }) {
 export function ScrapeTrigger({
   onTrigger,
   compact = false,
+  disabled = false,
 }: {
   onTrigger?: () => Promise<void>;
   compact?: boolean;
+  disabled?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
+  const busy = loading || disabled;
 
   async function trigger() {
     setLoading(true);
@@ -50,19 +73,19 @@ export function ScrapeTrigger({
       <>
         <button
           onClick={trigger}
-          disabled={loading}
+          disabled={busy}
           aria-label="Run scraper"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#EBEBEB] bg-white text-sm transition-colors hover:bg-[#FAFAF8] disabled:opacity-50 sm:hidden"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface-muted text-sm transition-colors hover:bg-surface-subtle disabled:opacity-50 sm:hidden"
         >
-          {loading ? "…" : "⚡"}
+          {busy ? "…" : "⚡"}
         </button>
         <button
           onClick={trigger}
-          disabled={loading}
-          className="hidden items-center gap-1.5 rounded-lg border border-[#EBEBEB] bg-white px-3 py-1.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-[#FAFAF8] disabled:opacity-50 sm:flex"
+          disabled={busy}
+          className="hidden items-center gap-1.5 rounded-lg border border-border bg-surface-muted px-3 py-1.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-surface-subtle disabled:opacity-50 sm:flex"
         >
           <span className="text-[12px]">⚡</span>
-          {loading ? "Scraping…" : "Scrape"}
+          {busy ? "Scraping…" : "Scrape"}
         </button>
       </>
     );

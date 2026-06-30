@@ -29,21 +29,33 @@ export async function fetchProblems(limit = 200): Promise<Problem[]> {
   const client = getSupabase();
   if (!client) return [];
 
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Try the RPC function for true random ordering (requires schema migration)
+  const { data: rpcData, error: rpcError } = await client
+    .rpc("get_random_problems", { limit_count: limit });
 
+  if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+    return rpcData as Problem[];
+  }
+
+  // Fallback: fetch a large page and shuffle in JS for variety on each refresh
   const { data, error } = await client
     .from("problems")
     .select("*")
-    .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(2000);
 
   if (error) {
     console.error("Supabase fetch error:", error);
     return [];
   }
 
-  return (data ?? []) as Problem[];
+  const all = (data ?? []) as Problem[];
+  // Fisher-Yates shuffle
+  for (let i = all.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [all[i], all[j]] = [all[j], all[i]];
+  }
+  return all.slice(0, limit);
 }
 
 export async function fetchProblemById(id: string): Promise<Problem | null> {
@@ -60,11 +72,15 @@ export async function fetchProblemById(id: string): Promise<Problem | null> {
   return data as Problem;
 }
 
+const COLUMN_NOT_FOUND = /Could not find the '(\w+)' column/;
+
 export async function insertProblem(
   problem: Omit<Problem, "id" | "created_at">
-): Promise<Problem | null> {
+): Promise<{ problem: Problem | null; error: string | null }> {
   const client = getSupabase();
-  if (!client) return null;
+  if (!client) {
+    return { problem: null, error: "Supabase client not configured" };
+  }
 
   const { data, error } = await client
     .from("problems")
@@ -73,11 +89,28 @@ export async function insertProblem(
     .single();
 
   if (error) {
+    // Graceful degradation: if new columns don't exist yet, retry without them.
+    // Run the migration SQL in Supabase dashboard to unlock these fields.
+    if (COLUMN_NOT_FOUND.test(error.message)) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { solution_exists_score: _score, gap_analysis: _gap, ...core } = problem;
+      const { data: fallback, error: e2 } = await client
+        .from("problems")
+        .insert(core)
+        .select()
+        .single();
+      if (e2) {
+        console.error("Supabase insert error (fallback):", e2);
+        return { problem: null, error: e2.message };
+      }
+      return { problem: fallback as Problem, error: null };
+    }
+
     console.error("Supabase insert error:", error);
-    return null;
+    return { problem: null, error: error.message };
   }
 
-  return data as Problem;
+  return { problem: data as Problem, error: null };
 }
 
 export async function problemExistsByUrl(url: string): Promise<boolean> {

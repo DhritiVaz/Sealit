@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/types";
-import { avatarColors, getCoverImage, getDomainGradient } from "@/lib/domain-images";
+import { getDomainGradient } from "@/lib/domain-images";
 import { DifficultyBadge } from "./DifficultyBadge";
 import { OpportunityScore } from "./OpportunityScore";
-import { ProgressBar, fmt } from "./ProgressBar";
+import { ProgressBar } from "./ProgressBar";
 import { SourceTag } from "./SourceTag";
 
 function CoverImage({
@@ -16,53 +15,25 @@ function CoverImage({
   problem: Problem;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-  const src = problem.cover_image ?? getCoverImage(problem.id);
-
-  if (failed) {
+  if (problem.cover_image) {
     return (
-      <div
-        className={`flex items-center justify-center ${className}`}
-        style={{ background: getDomainGradient(problem.domain) }}
-      >
-        <span className="text-[11px] font-bold uppercase tracking-widest text-white/80">
-          {problem.domain}
-        </span>
-      </div>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={problem.cover_image}
+        alt=""
+        className={`object-cover ${className}`}
+        loading="lazy"
+      />
     );
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt=""
-      className={`object-cover ${className}`}
-      loading="lazy"
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-function BuilderAvatars({ id, count }: { id: string; count: number }) {
-  const colors = avatarColors(id);
-  const initials = ["JK", "AM", "RS"];
-
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex -space-x-2">
-        {colors.map((bg, i) => (
-          <div
-            key={i}
-            className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-[8px] font-bold text-white"
-            style={{ backgroundColor: bg }}
-          >
-            {initials[i]}
-          </div>
-        ))}
-      </div>
-      <span className="text-xs text-[#888884]">
-        {fmt(count)} builders engaged
+    <div
+      className={`flex items-center justify-center ${className}`}
+      style={{ background: getDomainGradient(problem.domain) }}
+    >
+      <span className="text-[11px] font-bold uppercase tracking-widest text-white/80">
+        {problem.domain}
       </span>
     </div>
   );
@@ -84,21 +55,22 @@ export function ProblemCard({
   viewMode?: "grid" | "list";
 }) {
   const router = useRouter();
-  const score = problem.opportunity_score ?? 75;
 
   if (viewMode === "list") {
     return (
-      <article className="group flex gap-5 rounded-xl border border-[#EBEBEB] bg-white p-4 transition-colors hover:border-[#CCCCCA]">
+      <article className="group flex gap-5 rounded-xl border border-border bg-surface-muted p-4 transition-colors hover:border-muted">
         <div className="relative h-28 w-40 shrink-0 overflow-hidden rounded-lg">
           <CoverImage problem={problem} className="h-full w-full" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-primary">
               {problem.domain}
             </span>
             <SourceTag source={problem.source} />
-            <OpportunityScore score={score} />
+            {problem.opportunity_score != null && (
+              <OpportunityScore score={problem.opportunity_score} />
+            )}
             <DifficultyBadge difficulty={problem.difficulty} />
           </div>
           <button
@@ -106,25 +78,22 @@ export function ProblemCard({
             onClick={() => router.push(`/problem/${problem.id}`)}
             className="w-full text-left"
           >
-            <h3 className="mb-1.5 text-lg font-bold tracking-tight text-foreground group-hover:text-primary">
+            <h3 className="mb-1.5 text-xl font-bold tracking-tight text-foreground group-hover:text-primary">
               {problem.headline}
             </h3>
-            <p className="mb-3 line-clamp-2 text-sm text-muted">{problem.description}</p>
+            <p className="mb-3 line-clamp-2 text-base leading-relaxed text-muted">{problem.description}</p>
           </button>
-          <div className="flex items-center justify-between">
-            <BuilderAvatars id={problem.id} count={problem.builders_count} />
-            <div className="flex gap-2">
-              {onSave && (
-                <button onClick={onSave} className="text-xs font-semibold text-primary">
-                  {saved ? "Saved ✓" : "Save"}
-                </button>
-              )}
-              {onBuild && (
-                <button onClick={onBuild} className="text-xs font-semibold text-primary">
-                  {building ? "Building ✓" : "I'm building this"}
-                </button>
-              )}
-            </div>
+          <div className="flex items-center justify-end gap-2">
+            {onSave && (
+              <button onClick={onSave} className="text-sm font-semibold text-primary">
+                {saved ? "Saved ✓" : "Save"}
+              </button>
+            )}
+            {onBuild && (
+              <button onClick={onBuild} className="text-sm font-semibold text-primary">
+                {building ? "Building ✓" : "I'm building this"}
+              </button>
+            )}
           </div>
         </div>
       </article>
@@ -132,20 +101,20 @@ export function ProblemCard({
   }
 
   return (
-    <article className="group flex h-full min-h-[340px] flex-col overflow-hidden rounded-2xl border border-[#EBEBEB] bg-white transition-shadow hover:shadow-md">
-      <div className="relative h-[120px] shrink-0 overflow-hidden bg-[#F0F0EE]">
+    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface-muted transition-shadow hover:shadow-md dark:hover:shadow-black/20">
+      <div className="relative h-[120px] shrink-0 overflow-hidden bg-surface-muted">
         <CoverImage problem={problem} className="h-full w-full transition-transform duration-300 group-hover:scale-105" />
         {onSave && (
           <button
             onClick={onSave}
-            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur-sm transition-colors hover:bg-white"
+            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-surface/90 shadow-sm backdrop-blur-sm transition-colors hover:bg-surface"
           >
             <svg
               width="16"
               height="16"
               viewBox="0 0 24 24"
-              fill={saved ? "#1B3A6B" : "none"}
-              stroke="#1B3A6B"
+              fill={saved ? "var(--primary)" : "none"}
+              stroke="var(--primary)"
               strokeWidth="2"
             >
               <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
@@ -155,45 +124,48 @@ export function ProblemCard({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col p-4">
-        <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-          <span className="rounded bg-primary-light px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+        <div className="mb-2.5 flex min-h-[52px] flex-wrap content-start items-start gap-1.5">
+          <span className="rounded bg-primary-light px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary">
             {problem.domain}
           </span>
           <SourceTag source={problem.source} />
-          <OpportunityScore score={score} />
+          {problem.opportunity_score != null && (
+            <OpportunityScore score={problem.opportunity_score} />
+          )}
           <DifficultyBadge difficulty={problem.difficulty} />
         </div>
 
         <button
           type="button"
           onClick={() => router.push(`/problem/${problem.id}`)}
-          className="mb-3 min-h-0 flex-1 text-left"
+          className="mb-3 min-h-[104px] flex-1 text-left"
         >
-          <h3 className="mb-1.5 line-clamp-2 text-[15px] font-bold leading-snug tracking-tight text-foreground group-hover:text-primary">
+          <h3 className="mb-1.5 line-clamp-2 text-[17px] font-bold leading-snug tracking-tight text-foreground group-hover:text-primary">
             {problem.headline}
           </h3>
-          <p className="line-clamp-2 text-[13px] leading-relaxed text-[#888884]">
+          <p className="line-clamp-2 text-[15px] leading-relaxed text-muted">
             {problem.description}
           </p>
         </button>
 
         <div className="mt-auto shrink-0 space-y-2.5">
-          <BuilderAvatars id={problem.id} count={problem.builders_count} />
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <ProgressBar pct={problem.builders_started_pct} height={3} />
+          {problem.builders_count > 0 && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <ProgressBar pct={problem.builders_started_pct} height={3} />
+              </div>
+              <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-muted">
+                {problem.builders_started_pct}% started building
+              </span>
             </div>
-            <span className="shrink-0 text-[11px] font-medium text-[#BBBBBA]">
-              {problem.builders_started_pct}% started building
-            </span>
-          </div>
+          )}
           {onBuild && (
             <button
               onClick={onBuild}
-              className={`w-full rounded-lg py-2 text-[12px] font-semibold transition-colors ${
+              className={`w-full rounded-lg py-2.5 text-[14px] font-semibold transition-colors ${
                 building
                   ? "bg-primary text-white"
-                  : "border border-[#EBEBEB] text-primary hover:bg-primary-light"
+                  : "border border-border text-primary hover:bg-primary-light"
               }`}
             >
               {building ? "View build tracker →" : "I'm building this"}

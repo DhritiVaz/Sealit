@@ -1,17 +1,30 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { BuildIdea, RawPost, StructuredProblem } from "./types";
-import { resolveUserStack } from "./user-stack";
+
+// Use gemini-2.0-flash-lite by default — it has a generous free tier (1M tokens/day).
+// Override with GEMINI_MODEL=gemini-2.5-flash in .env.local for higher quality.
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 function getModel() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
+  const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
   const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  return genAI.getGenerativeModel({ model: modelName });
 }
 
-const STRUCTURE_PROMPT = `You are a product analyst for Sealit, a platform that surfaces real unsolved problems for builders.
+const STRUCTURE_PROMPT = `You are a product analyst for Sealit, a platform that surfaces GENUINELY UNSOLVED problems for builders.
 
-Given a raw post from Reddit or Hacker News, extract a structured problem card.
+Given a raw post from Reddit or Hacker News, do two things in one response:
+1. Extract a structured problem card
+2. Rate whether a solid, widely-adopted solution already exists (solution_exists_score 1-10)
+
+solution_exists_score scale:
+- 1-3: No good solution exists. Genuine gap. Examples: very niche, new, or overlooked problems.
+- 4-6: Partial solutions exist with significant gaps. Existing tools are clunky, expensive, or miss key use cases.
+- 7-10: Solid, widely-adopted solution exists. Examples: "payment processing" (Stripe), "cloud hosting" (AWS), "email" (Gmail). Skip these.
+
+Be honest and critical. Don't rate everything as 1-3. If established tools handle this well, say so.
 
 Return ONLY valid JSON with this exact shape:
 {
@@ -23,54 +36,47 @@ Return ONLY valid JSON with this exact shape:
   "tried_before": "What solutions have been attempted or why existing tools fail",
   "time_estimate": "e.g. 'Weekend MVP' or '2-4 weeks'",
   "tags": ["tag1", "tag2", "tag3"],
-  "opportunity_score": 62-99 integer rating how good an opportunity this is for a builder (market pain × feasibility × competition gap)
+  "opportunity_score": 62-99 integer rating how good an opportunity this is for a builder (market pain × feasibility × competition gap),
+  "solution_exists_score": integer 1-10 per the scale above,
+  "gap_analysis": "If score 4-6: one sentence on what existing solutions miss, followed by a specific product idea that fills the gap. If score 1-3: empty string. If score 7-10: 'mature solution exists'"
 }`;
 
 export async function structureProblem(
   post: RawPost
 ): Promise<StructuredProblem | null> {
   const model = getModel();
-  if (!model) return fallbackStructure(post);
+  if (!model) {
+    console.error("GEMINI_API_KEY is not configured");
+    return null;
+  }
 
   const sourceLabel =
     post.source === "reddit"
       ? `Reddit r/${post.subreddit ?? "unknown"}`
       : "Hacker News Ask HN";
 
+  // Truncate very long bodies to keep token usage reasonable
+  const body = (post.body || "(no body)").slice(0, 2000);
+
   try {
     const result = await model.generateContent([
       STRUCTURE_PROMPT,
-      `\nSource: ${sourceLabel}\nTitle: ${post.title}\n\nBody:\n${post.body || "(no body)"}`,
+      `\nSource: ${sourceLabel}\nTitle: ${post.title}\n\nBody:\n${body}`,
     ]);
 
     const text = result.response.text();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return fallbackStructure(post);
+    if (!jsonMatch) return null;
 
-    const parsed = JSON.parse(jsonMatch[0]) as StructuredProblem;
-    return parsed;
+    return JSON.parse(jsonMatch[0]) as StructuredProblem;
   } catch (err) {
+    const msg = String(err);
+    if (msg.includes("429") || msg.includes("spending cap") || msg.includes("quota")) {
+      throw new Error(`Gemini API limit hit (${msg.includes("spending cap") ? "monthly spending cap exceeded — go to ai.studio/spend to increase it, or set GEMINI_MODEL=gemini-2.0-flash-lite" : "rate limited"})`);
+    }
     console.error("Gemini structure error:", err);
-    return fallbackStructure(post);
+    return null;
   }
-}
-
-function fallbackStructure(post: RawPost): StructuredProblem {
-  return {
-    headline: post.title.slice(0, 120),
-    description:
-      post.body?.slice(0, 200) ||
-      "A real problem surfaced from the builder community.",
-    domain: "Dev Tools",
-    difficulty: "Medium",
-    context:
-      post.body?.slice(0, 500) ||
-      "This problem was identified from community discussions where builders expressed unmet needs.",
-    tried_before:
-      "Existing solutions may partially address this, but community feedback suggests significant gaps remain.",
-    time_estimate: "1-2 weeks",
-    tags: ["Community", "Builder"],
-  };
 }
 
 const GENERIC_STACK = /general web|web development|your stack|modern stack|full.?stack|typical stack/i;
@@ -111,13 +117,17 @@ export async function generateBuildIdeas(
     domain?: string;
   },
   stack: string[]
-): Promise<{ ideas: BuildIdea[]; stackUsed: string[] }> {
-  const stackUsed = resolveUserStack(stack);
+): Promise<{ ideas: BuildIdea[]; stackUsed: string[]; error?: string }> {
+  if (stack.length === 0) {
+    return { ideas: [], stackUsed: [], error: "Complete onboarding to set your stack" };
+  }
+
+  const stackUsed = stack;
   const stackStr = stackUsed.join(", ");
   const model = getModel();
 
   if (!model) {
-    return { ideas: sanitizeIdeas(fallbackIdeas(problem, stackUsed), stackUsed), stackUsed };
+    return { ideas: [], stackUsed, error: "GEMINI_API_KEY is not configured" };
   }
 
   const prompt = `You are a technical advisor for builders. The builder's EXACT tech stack is: ${stackStr}
@@ -145,39 +155,14 @@ Return ONLY valid JSON array:
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return { ideas: sanitizeIdeas(fallbackIdeas(problem, stackUsed), stackUsed), stackUsed };
+    if (!jsonMatch) {
+      return { ideas: [], stackUsed, error: "Gemini returned an invalid response" };
+    }
 
     const ideas = sanitizeIdeas(JSON.parse(jsonMatch[0]) as BuildIdea[], stackUsed);
     return { ideas, stackUsed };
   } catch (err) {
     console.error("Gemini ideas error:", err);
-    return { ideas: sanitizeIdeas(fallbackIdeas(problem, stackUsed), stackUsed), stackUsed };
+    return { ideas: [], stackUsed, error: "Failed to generate build ideas" };
   }
-}
-
-function fallbackIdeas(
-  problem: { headline: string; domain?: string },
-  stack: string[]
-): BuildIdea[] {
-  const [a, b, c, d] = stack;
-  const ab = [a, b].filter(Boolean).join(" + ");
-  const cd = [c, d].filter(Boolean).join(" + ") || b || a;
-
-  return [
-    {
-      title: `${a} intake MVP`,
-      description: `Build a ${a}-based web app that solves the core pain point: ${problem.headline.slice(0, 80)}. Use ${b ?? "your backend"} for the API layer and ship a single happy-path flow this weekend.`,
-      stackMatch: ab,
-    },
-    {
-      title: `${problem.domain ?? "Domain"} dashboard`,
-      description: `Create a real-time dashboard in ${a} showing problem severity and user demand signals. Store data in ${c ?? "PostgreSQL"} and deploy on ${d ?? "Vercel"}. Validates the problem before you build the full product.`,
-      stackMatch: [a, c, d].filter(Boolean).join(" + "),
-    },
-    {
-      title: "AI-assisted workflow tool",
-      description: `Combine ${b ?? a} with an LLM API to automate the most painful step in this problem space. ${cd} handles persistence and auth — scoped to one user persona, shippable in a weekend hackathon.`,
-      stackMatch: cd,
-    },
-  ];
 }

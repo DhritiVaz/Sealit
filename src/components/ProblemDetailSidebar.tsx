@@ -30,7 +30,7 @@ function MetaRow({
   value: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-[#F4F4F2] last:border-0">
+    <div className="flex items-center justify-between py-2.5">
       <div className="flex items-center gap-2.5 text-[13px] text-[#888884]">
         <span className="text-[#BBBBBA]">{icon}</span>
         {label}

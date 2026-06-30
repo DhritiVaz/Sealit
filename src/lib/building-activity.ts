@@ -47,87 +47,78 @@ function extractKeywords(headline: string): string {
     .join(" ");
 }
 
-function seededCount(seed: string, min: number, max: number): number {
-  const hash = seed.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  return min + (hash % (max - min + 1));
+function excerpt(text: string, max = 160): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 1)}…`;
 }
 
-function buildExcerptPool(problem: Problem): string[] {
-  const ctxParts = problem.context.split(/(?<=[.!?])\s+/).filter((s) => s.length > 20);
-  const triedPart = problem.tried_before.split(/[,—]/)[0]?.trim() ?? "Existing tools";
+async function searchReddit(query: string, since: Date): Promise<RelatedPost[]> {
+  try {
+    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=15`;
+    const { data } = await axios.get(url, {
+      headers: { "User-Agent": USER_AGENT },
+      timeout: 12000,
+    });
 
-  return [
-    `Top comment (847 upvotes): "We're losing hours every week — ${problem.headline.slice(0, 52).toLowerCase()}."`,
-    ctxParts[0] ?? `Practitioners in ${problem.domain} describe the same bottleneck every week.`,
-    `Ask HN reply: "${triedPart} — none of it addresses the workflow gap."`,
-    `Posted 3h ago: "${ctxParts[1] ?? problem.tried_before.slice(0, 95)}${problem.tried_before.length > 95 ? "…" : ""}"`,
-  ];
+    const posts: RelatedPost[] = [];
+    for (const child of data?.data?.children ?? []) {
+      const post = child.data;
+      if (!post?.title) continue;
+
+      const created = new Date((post.created_utc as number) * 1000);
+      if (created < since) continue;
+
+      posts.push({
+        title: post.title as string,
+        url: `https://reddit.com${post.permalink as string}`,
+        source: "reddit",
+        postedAt: created.toISOString(),
+        excerpt: excerpt((post.selftext as string) || post.title),
+      });
+    }
+
+    return posts;
+  } catch (err) {
+    console.error("Reddit search error:", err);
+    return [];
+  }
 }
 
-function demoPosts(problem: Problem, since: Date): RelatedPost[] {
-  const excerpts = buildExcerptPool(problem);
+async function searchHackerNews(query: string, since: Date): Promise<RelatedPost[]> {
+  try {
+    const sinceTs = Math.floor(since.getTime() / 1000);
+    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&numericFilters=created_at_i>${sinceTs}&hitsPerPage=15`;
+    const { data } = await axios.get(url, { timeout: 12000 });
 
-  const templates = [
-    {
-      title: `Anyone else struggling with ${problem.headline.toLowerCase().slice(0, 55)}?`,
-      source: "reddit" as const,
-    },
-    {
-      title: `Ask HN: How do you deal with ${domainLabel(problem.domain)} workflow pain?`,
+    return (data.hits ?? []).map((hit: {
+      title: string;
+      url?: string;
+      objectID: string;
+      created_at_i: number;
+      story_text?: string;
+    }) => ({
+      title: hit.title,
+      url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
       source: "hn" as const,
-    },
-    {
-      title: `Rant: ${problem.headline.slice(0, 72)}`,
-      source: "reddit" as const,
-    },
-    {
-      title: `Looking for a tool that solves ${problem.domain} — ${problem.tags?.[0] ?? "builder"} angle`,
-      source: "hn" as const,
-    },
-  ];
-
-  return templates.map((t, i) => ({
-    title: t.title,
-    url: problem.source_url,
-    source: t.source,
-    postedAt: new Date(since.getTime() + (i + 1) * 3600000 * 4).toISOString(),
-    excerpt: excerpts[i],
-  }));
-}
-
-function domainLabel(domain: string): string {
-  return domain.replace(/Tech$/i, " tech").toLowerCase();
-}
-
-function demoIssues(problem: Problem): RelatedIssue[] {
-  const kw = extractKeywords(problem.headline).split(" ")[0] || "tool";
-  return [
-    {
-      title: `[Feature Request] Better support for ${problem.domain.toLowerCase()} workflows`,
-      repo: "community/requests",
-      url: "https://github.com/search?q=" + encodeURIComponent(problem.headline.slice(0, 30)),
-      state: "open",
-      comments: seededCount(problem.id + "1", 3, 28),
-    },
-    {
-      title: `${kw}: ${problem.headline.slice(0, 50)}`,
-      repo: "open-source/ideas",
-      url: "https://github.com/search?q=" + encodeURIComponent(kw),
-      state: "open",
-      comments: seededCount(problem.id + "2", 1, 15),
-    },
-  ];
+      postedAt: new Date(hit.created_at_i * 1000).toISOString(),
+      excerpt: excerpt(hit.story_text || hit.title),
+    }));
+  } catch (err) {
+    console.error("HN search error:", err);
+    return [];
+  }
 }
 
 async function searchGitHub(query: string): Promise<RelatedIssue[]> {
   try {
-    const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}+is:issue+is:open&sort=updated&per_page=4`;
+    const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}+is:issue+is:open&sort=updated&per_page=6`;
     const { data } = await axios.get(url, {
       headers: { Accept: "application/vnd.github+json", "User-Agent": USER_AGENT },
       timeout: 10000,
     });
 
-    return (data.items ?? []).slice(0, 4).map((item: {
+    return (data.items ?? []).slice(0, 6).map((item: {
       title: string;
       html_url: string;
       repository_url: string;
@@ -140,7 +131,8 @@ async function searchGitHub(query: string): Promise<RelatedIssue[]> {
       state: item.state,
       comments: item.comments,
     }));
-  } catch {
+  } catch (err) {
+    console.error("GitHub search error:", err);
     return [];
   }
 }
@@ -150,25 +142,29 @@ export async function fetchBuildingActivity(
   startedAt: string
 ): Promise<BuildingActivity> {
   const since = new Date(startedAt);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
   const query = extractKeywords(problem.headline) || problem.domain;
 
-  const [githubIssues] = await Promise.all([
+  const [redditPosts, hnPosts, githubIssues] = await Promise.all([
+    searchReddit(query, since),
+    searchHackerNews(query, since),
     searchGitHub(query),
   ]);
 
-  const relatedPosts = demoPosts(problem, since);
+  const relatedPosts = [...redditPosts, ...hnPosts].sort(
+    (a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime()
+  );
 
-  const issues =
-    githubIssues.length > 0 ? githubIssues : demoIssues(problem);
-
-  const base = seededCount(problem.id, 180, 420);
-  const hoursSinceStart = Math.max(1, (Date.now() - since.getTime()) / 3600000);
-  const complaintsSinceStarted = Math.floor(base * 0.3 + hoursSinceStart * 12);
-  const complaintsToday = seededCount(problem.id + new Date().toDateString(), 120, 380);
+  const complaintsSinceStarted = relatedPosts.length;
+  const complaintsToday = relatedPosts.filter(
+    (p) => new Date(p.postedAt) >= todayStart
+  ).length;
 
   return {
     relatedPosts,
-    githubIssues: issues,
+    githubIssues,
     complaintsToday,
     complaintsSinceStarted,
   };

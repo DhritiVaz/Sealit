@@ -1,16 +1,23 @@
 import { NextResponse } from "next/server";
-import { getAllProblems } from "@/lib/pipeline";
-import { getTotalBuilders } from "@/lib/seed-data";
+import { getPlatformStats } from "@/lib/user-data";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const problems = await getAllProblems();
-  const totalBuilders = problems.reduce((s, p) => s + p.builders_count, 0);
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({
+      totalBuilders: 0,
+      problemCount: 0,
+      lastUpdated: null,
+      configured: false,
+    });
+  }
+
+  const stats = await getPlatformStats();
 
   return NextResponse.json({
-    totalBuilders: totalBuilders || getTotalBuilders(),
-    problemCount: problems.length,
-    lastUpdated: new Date().toISOString(),
+    ...stats,
+    configured: true,
   });
 }

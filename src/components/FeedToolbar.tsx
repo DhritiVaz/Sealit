@@ -1,6 +1,8 @@
 "use client";
 
 import { ScrapeTrigger } from "./LiveCounter";
+import { SIDEBAR_CATEGORIES } from "@/lib/constants";
+import { useSidebar } from "./SidebarContext";
 
 export function FeedToolbar({
   search,
@@ -8,19 +10,23 @@ export function FeedToolbar({
   onScrape,
   viewMode,
   onViewModeChange,
+  scraping = false,
 }: {
   search: string;
   onSearchChange: (v: string) => void;
   onScrape: () => Promise<void>;
   viewMode: "grid" | "list";
   onViewModeChange: (mode: "grid" | "list") => void;
+  scraping?: boolean;
 }) {
+  const { selectedCategory, setSelectedCategory } = useSidebar();
+
   return (
-    <header className="sticky top-0 z-40 border-b border-[#EBEBEB] bg-white">
-      <div className="flex h-14 items-center gap-3 px-4 md:gap-4 md:px-6">
+    <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-sm">
+      <div className="flex items-center gap-3 px-4 pb-3 pt-5 md:gap-4 md:px-6">
         <div className="relative min-w-0 flex-1">
           <svg
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#BBBBBA]"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
             width="16"
             height="16"
             viewBox="0 0 24 24"
@@ -36,18 +42,18 @@ export function FeedToolbar({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search problems, keywords, topics..."
-            className="w-full rounded-lg border border-[#E8E8E8] bg-[#FAFAF8] py-2 pl-10 pr-4 text-sm text-foreground outline-none transition-colors placeholder:text-[#BBBBBA] focus:border-primary/30 focus:bg-white"
+            className="w-full rounded-lg border border-border bg-surface-subtle py-2.5 pl-10 pr-4 text-[15px] text-foreground outline-none transition-colors placeholder:text-muted focus:border-primary/30 focus:bg-surface"
           />
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <div className="flex items-center rounded-lg border border-[#EBEBEB] p-0.5">
+          <div className="flex items-center rounded-lg border border-border bg-surface-subtle p-0.5">
             <button
               onClick={() => onViewModeChange("grid")}
-              className={`rounded-md p-1.5 transition-colors ${
+              className={`rounded-md p-1.5 transition-all duration-200 ease-in-out ${
                 viewMode === "grid"
-                  ? "bg-[#F0F0EE] text-foreground"
-                  : "text-[#BBBBBA] hover:text-foreground"
+                  ? "bg-surface-muted text-foreground shadow-sm"
+                  : "text-muted hover:text-foreground"
               }`}
               aria-label="Grid view"
             >
@@ -60,10 +66,10 @@ export function FeedToolbar({
             </button>
             <button
               onClick={() => onViewModeChange("list")}
-              className={`rounded-md p-1.5 transition-colors ${
+              className={`rounded-md p-1.5 transition-all duration-200 ease-in-out ${
                 viewMode === "list"
-                  ? "bg-[#F0F0EE] text-foreground"
-                  : "text-[#BBBBBA] hover:text-foreground"
+                  ? "bg-surface-muted text-foreground shadow-sm"
+                  : "text-muted hover:text-foreground"
               }`}
               aria-label="List view"
             >
@@ -78,8 +84,35 @@ export function FeedToolbar({
             </button>
           </div>
 
-          <ScrapeTrigger onTrigger={onScrape} compact />
+          <ScrapeTrigger onTrigger={onScrape} compact disabled={scraping} />
         </div>
+      </div>
+
+      {/* Category pills */}
+      <div className="scrollbar-hide flex gap-2 overflow-x-auto px-4 pb-3 md:px-6">
+        <button
+          onClick={() => setSelectedCategory(null)}
+          className={`shrink-0 rounded-full border px-4 py-1.5 text-[13px] font-medium transition-all ${
+            !selectedCategory
+              ? "border-primary bg-primary text-white"
+              : "border-border bg-surface text-muted hover:border-primary/40 hover:text-foreground"
+          }`}
+        >
+          All
+        </button>
+        {SIDEBAR_CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
+            className={`shrink-0 rounded-full border px-4 py-1.5 text-[13px] font-medium transition-all ${
+              selectedCategory === cat.id
+                ? "border-primary bg-primary text-white"
+                : "border-border bg-surface text-muted hover:border-primary/40 hover:text-foreground"
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
       </div>
     </header>
   );

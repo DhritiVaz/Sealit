@@ -30,6 +30,7 @@ export const DOMAIN_OPTIONS = [
   "Mental Health",
   "Housing",
   "Infrastructure",
+  "Other",
 ];
 
 export const SIDEBAR_CATEGORIES = [
