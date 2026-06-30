@@ -19,7 +19,7 @@ export default function OnboardingPage() {
   const [links, setLinks] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
-  const [detected, setDetected] = useState<{ stack: string[]; domains: string[] } | null>(null);
+  const [, setDetected] = useState<{ stack: string[]; domains: string[] } | null>(null);
 
   // Manual flow state
   const [stack, setStack] = useState<string[]>([]);

@@ -214,7 +214,6 @@ function FeedContent() {
     return bMatch - aMatch;
   });
 
-  const problemCount = problems.length;
 
   return (
     <>
